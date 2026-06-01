@@ -2,7 +2,7 @@ package app.template.patches.example
 
 import app.morphe.patcher.Fingerprint
 
-// The target app's ad layer is NOT obfuscated, so we match each method by its
+// The Yahoo Finance ad layer is NOT obfuscated, so we match each method by its
 // exact defining class + method name (via the `custom` predicate), plus return
 // type and parameters. This is far more robust than instruction fingerprints and
 // survives app updates as long as Yahoo keeps these class/method names.

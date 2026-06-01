@@ -2,8 +2,8 @@ group = "app.template"
 
 patches {
     about {
-        name = "Fin Tweaks"
-        description = "Personal patch bundle"
+        name = "Yahoo Finance Ad Removal"
+        description = "Removes ads from Yahoo Finance"
         source = "https://github.com/isuruhg/fin-tweaks"
         author = "isuruhg"
         contact = "na"

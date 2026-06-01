@@ -2,16 +2,16 @@ package app.template.patches.example
 
 import app.morphe.patcher.extensions.InstructionExtensions.addInstructions
 import app.morphe.patcher.patch.bytecodePatch
-import app.template.patches.shared.Constants.COMPATIBILITY_FINANCE
+import app.template.patches.shared.Constants.COMPATIBILITY_YAHOO_FINANCE
 
 @Suppress("unused")
 val removeAdsPatch = bytecodePatch(
     name = "Remove ads",
-    description = "Removes in-app ads at the source so they are never fetched, " +
-        "loaded or shown.",
+    description = "Removes stream, pencil and markets ads from Yahoo Finance at the " +
+        "source so they are never fetched, loaded or shown.",
     default = true,
 ) {
-    compatibleWith(COMPATIBILITY_FINANCE)
+    compatibleWith(COMPATIBILITY_YAHOO_FINANCE)
 
     execute {
         // 1. Stream/feed ads (Home, News, QSP).

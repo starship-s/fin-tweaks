@@ -1,6 +1,8 @@
 #!/bin/sh
-# Rebuild the patch bundle and apply it to an APK/APKM, producing a signed APK.
+# Rebuild the Yahoo Finance ad-removal bundle and apply it to an APK/APKM,
+# producing a signed APK.
 # Usage: ./repatch.sh <input.apkm>
+#   e.g. ./repatch.sh com.yahoo.mobile.client.android.finance_26.10.2-xxxx.apkm
 set -e
 
 APKM="$1"
@@ -12,7 +14,7 @@ export ANDROID_HOME="${ANDROID_HOME:-$HOME/Library/Android/sdk}"
 HERE=$(cd "$(dirname "$0")" && pwd)
 CLI=$(ls "$HOME"/morphe/morphe-cli/build/libs/morphe-cli-*-all.jar | head -1)
 OUTDIR=$(dirname "$APKM")/out
-OUT="$OUTDIR/app-noads.apk"
+OUT="$OUTDIR/yahoo-finance-noads.apk"
 
 # 1. Rebuild the patches bundle (picks up any edits to the patch source).
 (cd "$HERE" && ./gradlew buildAndroid --console=plain -q)

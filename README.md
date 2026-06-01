@@ -1,26 +1,27 @@
-# Fin Tweaks
+# Yahoo Finance — Remove ads (Morphe patch)
 
-A personal [Morphe](https://github.com/MorpheApp) patch bundle that removes in-app
-ads at the source — they are never fetched, loaded or rendered (not just
-network-blocked).
+A [Morphe](https://github.com/MorpheApp) patch bundle that removes ads from the
+Yahoo Finance Android app (`com.yahoo.mobile.client.android.finance`) at the
+source — the ads are never fetched, loaded or rendered (not just network-blocked).
 
-## Patches
+## What it patches
 
-The patch matches methods by exact class + method name (the target app's ad layer
-is not obfuscated), which is robust across app updates. Source lives in
+The app's ad layer is **not obfuscated**, so each hook matches by exact class +
+method name (robust across updates). Source lives in
 `patches/src/main/kotlin/app/template/patches/example/`.
 
-| # | Surface | Change |
-|---|---------|--------|
-| 1 | Feed / list ads | ad provider returns an empty ad unit |
-| 2 | Home banner | "can show ad" → false |
-| 3 | Markets top ad | "can show ad" → false |
-| 4 | Detail-page top banner | row builder returns null |
-| 5 | Detail-page native ads | row builder returns null |
+| # | Surface | Method | Change |
+|---|---------|--------|--------|
+| 1 | Feed / stream ads (Home, News, QSP lists) | `ads.AdFetcher.getNextAd(int)` | return a new `EmptyAdUnit` |
+| 2 | Home "pencil" banner | `home.ad.PencilAdDelegate.canAdBeShown()` | return `false` |
+| 3 | Markets top ad | `markets.ad.MarketsTopCenterAdDelegate.canAdBeShown()` | return `false` |
+| 4 | Quote page top banner | `quote.model.TopCenterAdModule.buildRowViewModel(...)` | return `null` |
+| 5 | Quote page native/pencil ads (Summary/Analysis/Financials) | `quote.model.BasePencilAdModule.buildRowViewModel(...)` | return `null` |
 
-Hooks 4 & 5 reuse the app's own "no ad row" path, so there is no placeholder gap.
+Hooks 4 & 5 reuse the app's own "no ad row" path (these methods already return
+`null` when an ad is hidden), so there is no placeholder gap and nothing is fetched.
 
-## Build the bundle (`.mpp`)
+## Build the patches bundle (`.mpp`)
 
 Requires JDK 21+, the Android SDK, and a GitHub `read:packages` token in
 `~/.gradle/gradle.properties` (`gpr.user` / `gpr.key`).
@@ -34,15 +35,26 @@ export ANDROID_HOME="$HOME/Library/Android/sdk"
 
 ## Use it
 
-**In Morphe Manager:** add this repo's release as a patch source (URL), or import
-the built `.mpp` from device storage (Manager v1.16.0+). Then select the target app
-and patch on-device — Manager merges split APKs and signs automatically, so future
-app updates are re-patched on the phone.
+### A) On the phone, via Morphe Manager (recommended for updates)
+1. Download the bundle to the phone:
+   <https://github.com/isuruhg/fin-tweaks/releases/latest/download/patches.mpp>
+2. Morphe Manager (v1.16.0+) → add a patch source → **import the local `.mpp`**
+   from the file manager.
+3. Select Yahoo Finance and patch on-device. Manager merges the split APKs and
+   signs automatically, so future app updates are re-patched entirely on-device.
 
-**On the desktop:** `./repatch.sh <app>.apkm` then `adb install -r out/app-noads.apk`.
+> Note: adding the **repo URL** as a source currently fails because the Morphe
+> toolchain's GitHub-releases resolver can't parse the API response. Use the local
+> `.mpp` import (or the direct release-asset URL) instead.
 
-## Updating
+### B) On the desktop, via morphe-cli
+```bash
+./repatch.sh com.yahoo.mobile.client.android.finance_<version>.apkm
+adb install -r out/yahoo-finance-noads.apk
+```
 
-Fingerprints are name-based, so minor app updates usually need no changes — just
-rebuild. If a hook stops matching, the patch log names the failed fingerprint;
-update that class/method name in `Fingerprints.kt`.
+## Updating for a new app version
+
+Fingerprints are name-based, so minor Yahoo updates usually need no changes — just
+rebuild and re-patch. If a hook stops matching, the patch log names the failed
+fingerprint; update that class/method name in `Fingerprints.kt`.
