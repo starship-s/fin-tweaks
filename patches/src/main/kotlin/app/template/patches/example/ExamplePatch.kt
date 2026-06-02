@@ -49,6 +49,16 @@ val removeAdsPatch = bytecodePatch(
             """,
         )
 
+        // 3b. Markets screen ad module: report ads as hidden (ad-free user path),
+        // which stops the fetch and removes the empty placeholder container.
+        MarketsAreAdsHiddenFingerprint.method.addInstructions(
+            0,
+            """
+                const/4 v0, 0x1
+                return v0
+            """,
+        )
+
         // 4. Quote page top banner: return null from buildRowViewModel so no row
         // (and no ad fetch) is ever produced.
         TopCenterAdBuildRowFingerprint.method.addInstructions(

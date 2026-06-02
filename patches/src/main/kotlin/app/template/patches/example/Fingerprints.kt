@@ -38,6 +38,19 @@ object MarketsAdCanBeShownFingerprint : Fingerprint(
     },
 )
 
+// Markets screen ad module (Stocks/Crypto/ETF/... tabs). areAdsHidden() normally
+// checks the AdsFree subscription feature; forcing it true makes the module take
+// the app's own "ad-free user" path — it skips the network fetch AND renders no
+// container (no empty placeholder box).
+object MarketsAreAdsHiddenFingerprint : Fingerprint(
+    returnType = "Z",
+    parameters = listOf(),
+    custom = { method, classDef ->
+        classDef.type == "Lcom/yahoo/mobile/client/android/finance/markets/ad/MarketsTopCenterAdModule;" &&
+            method.name == "areAdsHidden"
+    },
+)
+
 // Quote (symbol detail) page top banner. TopCenterAdModule.buildRowViewModel(...)
 // builds the banner row; it already returns null as its "no ad" path (the isHidden
 // branch), so returning null removes the banner and the ad is never fetched.
