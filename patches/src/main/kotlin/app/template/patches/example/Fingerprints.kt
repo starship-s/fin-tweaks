@@ -129,3 +129,30 @@ object YAnalyticsLogEventFingerprint : Fingerprint(
             method.name == "logEvent"
     },
 )
+
+// ---- Nags (separate "Remove nags" patch) ----
+
+// "Rate this app" prompt: askForRateOrSentiment decides whether to show it.
+object AppRateAskFingerprint : Fingerprint(
+    returnType = "Z",
+    parameters = listOf(
+        "Landroid/content/Context;",
+        "J",
+        "Lcom/yahoo/mobile/client/android/finance/analytics/data/TrackingData;",
+    ),
+    custom = { method, classDef ->
+        classDef.type == "Lcom/yahoo/mobile/client/android/finance/feedback/rating/AppRateManager;" &&
+            method.name == "askForRateOrSentiment"
+    },
+)
+
+// Feed "subscribe to Premium" upsell notification: suspend invoke() returns a
+// nullable UpsellNotificationParams. Returning null suppresses the card.
+object UpsellNotificationFetchFingerprint : Fingerprint(
+    returnType = "Ljava/lang/Object;",
+    parameters = listOf("Lkotlin/coroutines/e;"),
+    custom = { method, classDef ->
+        classDef.type == "Lcom/yahoo/mobile/client/android/finance/activityfeed/usecase/FetchUpsellNotificationUseCase;" &&
+            method.name == "invoke"
+    },
+)
