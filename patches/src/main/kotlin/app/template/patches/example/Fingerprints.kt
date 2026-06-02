@@ -80,3 +80,52 @@ object PencilAdBuildRowFingerprint : Fingerprint(
             method.name == "buildRowViewModel"
     },
 )
+
+// ---- Tracking / telemetry (separate "Block tracking" patch) ----
+
+// comScore audience measurement: no-op SDK startup.
+object ComscoreStartFingerprint : Fingerprint(
+    returnType = "V",
+    parameters = listOf("Landroid/content/Context;"),
+    custom = { method, classDef ->
+        classDef.type == "Lcom/comscore/Analytics;" && method.name == "start"
+    },
+)
+
+// AppsFlyer install/attribution tracking: no-op the app's init wrapper.
+object AppsFlyerInitFingerprint : Fingerprint(
+    returnType = "V",
+    parameters = listOf(),
+    custom = { method, classDef ->
+        classDef.type == "Lcom/yahoo/mobile/client/android/finance/appsflyer/AppsFlyerManager;" &&
+            method.name == "initialize"
+    },
+)
+
+// Embrace session/perf telemetry: no-op both start() overloads (isStarted stays
+// false, so all later Embrace calls become no-ops).
+object EmbraceStartFingerprint : Fingerprint(
+    returnType = "V",
+    parameters = listOf("Landroid/content/Context;"),
+    custom = { method, classDef ->
+        classDef.type == "Lio/embrace/android/embracesdk/Embrace;" && method.name == "start"
+    },
+)
+
+object EmbraceStartWithFrameworkFingerprint : Fingerprint(
+    returnType = "V",
+    parameters = listOf("Landroid/content/Context;", "Lio/embrace/android/embracesdk/AppFramework;"),
+    custom = { method, classDef ->
+        classDef.type == "Lio/embrace/android/embracesdk/Embrace;" && method.name == "start"
+    },
+)
+
+// Yahoo's own analytics bridge: drop every logged event.
+object YAnalyticsLogEventFingerprint : Fingerprint(
+    returnType = "V",
+    parameters = listOf("Lcom/yahoo/mobile/yanalytics/common/event/b;"),
+    custom = { method, classDef ->
+        classDef.type == "Lcom/yahoo/mobile/client/android/finance/analytics/YAnalyticsLoggerImpl;" &&
+            method.name == "logEvent"
+    },
+)
