@@ -1,83 +1,95 @@
 package app.template.patches.example
 
 import app.morphe.patcher.Fingerprint
+import com.android.tools.smali.dexlib2.iface.Method
+import com.android.tools.smali.dexlib2.iface.instruction.ReferenceInstruction
 
-// The Yahoo Finance ad layer is NOT obfuscated, so we match each method by its
-// exact defining class + method name (via the `custom` predicate), plus return
-// type and parameters. This is far more robust than instruction fingerprints and
-// survives app updates as long as Yahoo keeps these class/method names.
+// Since 26.1x Yahoo Finance obfuscates member names (and some class names, e.g.
+// AdFetcher), so hooks match on what survives R8: the defining class or package,
+// the method shape, and references to unobfuscated SDK/enum types and strings.
 
-// AdFetcher.getNextAd(int) -> YFAdUnit : the provider of stream/feed ads
-// (Home, News, QSP). Returning an EmptyAdUnit means no ad is ever fetched.
+private const val FINANCE = "Lcom/yahoo/mobile/client/android/finance/"
+private const val ADS_FREE = FINANCE + "subscription/v2/model/SubscriptionFeature\$AdsFree;"
+private const val SM_PLACEMENT_CONFIG = "Lcom/oath/mobile/ads/sponsoredmoments/config/SMAdPlacementConfig;"
+private const val FIREBASE_ANALYTICS = "Lcom/google/firebase/analytics/FirebaseAnalytics;"
+
+private fun Method.references(type: String) =
+    implementation?.instructions?.any {
+        (it as? ReferenceInstruction)?.reference?.toString()?.contains(type) == true
+    } == true
+
+// Stream/feed ad provider (Home, News, QSP): (int) -> ad unit, whose first branch
+// returns the empty ad unit for AdsFree subscribers. Formerly AdFetcher.getNextAd.
 object GetNextAdFingerprint : Fingerprint(
-    returnType = "Lcom/yahoo/mobile/client/android/finance/ads/model/YFAdUnit;",
     parameters = listOf("I"),
     custom = { method, classDef ->
-        classDef.type == "Lcom/yahoo/mobile/client/android/finance/ads/AdFetcher;" &&
-            method.name == "getNextAd"
+        classDef.type.startsWith(FINANCE + "ads/") &&
+            method.returnType.startsWith(FINANCE + "ads/model/") &&
+            method.references(ADS_FREE)
     },
 )
 
-// PencilAdDelegate.canAdBeShown() -> boolean : the Home top "pencil" banner gate.
+// Home top "pencil" banner gate. Formerly PencilAdDelegate.canAdBeShown().
 object PencilAdCanBeShownFingerprint : Fingerprint(
     returnType = "Z",
     parameters = listOf(),
     custom = { method, classDef ->
-        classDef.type == "Lcom/yahoo/mobile/client/android/finance/home/ad/PencilAdDelegate;" &&
-            method.name == "canAdBeShown"
+        classDef.type == FINANCE + "home/ad/PencilAdDelegate;" &&
+            method.references(SM_PLACEMENT_CONFIG)
     },
 )
 
-// MarketsTopCenterAdDelegate.canAdBeShown() -> boolean : the Markets top ad gate.
+// Markets top ad gate. Formerly MarketsTopCenterAdDelegate.canAdBeShown().
 object MarketsAdCanBeShownFingerprint : Fingerprint(
     returnType = "Z",
     parameters = listOf(),
     custom = { method, classDef ->
-        classDef.type == "Lcom/yahoo/mobile/client/android/finance/markets/ad/MarketsTopCenterAdDelegate;" &&
-            method.name == "canAdBeShown"
+        classDef.type == FINANCE + "markets/ad/MarketsTopCenterAdDelegate;" &&
+            method.references(SM_PLACEMENT_CONFIG)
     },
 )
 
-// Markets screen ad module (Stocks/Crypto/ETF/... tabs). areAdsHidden() normally
-// checks the AdsFree subscription feature; forcing it true makes the module take
-// the app's own "ad-free user" path — it skips the network fetch AND renders no
-// container (no empty placeholder box).
+// Markets screen ad module AdsFree check. Forcing it true takes the app's own
+// "ad-free user" path: no fetch and no empty placeholder container.
+// Formerly MarketsTopCenterAdModule.areAdsHidden().
 object MarketsAreAdsHiddenFingerprint : Fingerprint(
     returnType = "Z",
     parameters = listOf(),
     custom = { method, classDef ->
-        classDef.type == "Lcom/yahoo/mobile/client/android/finance/markets/ad/MarketsTopCenterAdModule;" &&
-            method.name == "areAdsHidden"
+        classDef.type == FINANCE + "markets/ad/MarketsTopCenterAdModule;" &&
+            method.references(ADS_FREE)
     },
 )
 
-// Quote (symbol detail) page top banner. TopCenterAdModule.buildRowViewModel(...)
-// builds the banner row; it already returns null as its "no ad" path (the isHidden
-// branch), so returning null removes the banner and the ad is never fetched.
+// Subscription feature -> accessibility lookup. Every AdsFree check in the app
+// (feed, Home daily brief, news, Inception slots, video) resolves through it.
+object FeatureAccessibilityFingerprint : Fingerprint(
+    returnType = FINANCE + "subscription/SubscriptionManager\$FeatureAccessibility;",
+    parameters = listOf(FINANCE + "subscription/v2/model/SubscriptionFeature;"),
+    custom = { method, classDef ->
+        classDef.type == FINANCE + "subscription/SubscriptionManagerHilt;" &&
+            method.references(ADS_FREE)
+    },
+)
+
+// Quote page modules build their row from (Context, view data); null is the
+// module's own "no ad" result. Formerly buildRowViewModel(Context, QspViewData).
+private fun Method.isBuildRow() =
+    parameterTypes.size == 2 &&
+        parameterTypes[0] == "Landroid/content/Context;" &&
+        returnType.startsWith(FINANCE + "core/app/model/")
+
+// Quote (symbol detail) page top banner.
 object TopCenterAdBuildRowFingerprint : Fingerprint(
-    returnType = "Lcom/yahoo/mobile/client/android/finance/core/app/model/RowViewModel;",
-    parameters = listOf(
-        "Landroid/content/Context;",
-        "Lcom/yahoo/mobile/client/android/finance/quote/model/QspViewData;",
-    ),
     custom = { method, classDef ->
-        classDef.type == "Lcom/yahoo/mobile/client/android/finance/quote/model/TopCenterAdModule;" &&
-            method.name == "buildRowViewModel"
+        classDef.type == FINANCE + "quote/model/TopCenterAdModule;" && method.isBuildRow()
     },
 )
 
-// Quote page pencil / native ad (Summary, Analysis and Financials tabs).
-// BasePencilAdModule.buildRowViewModel(...) builds the pencil ad row with the same
-// null semantics; PencilAdSummary/Analysis/Financials all inherit this method.
+// Quote page pencil / native ad (Summary, Analysis, Financials all inherit it).
 object PencilAdBuildRowFingerprint : Fingerprint(
-    returnType = "Lcom/yahoo/mobile/client/android/finance/core/app/model/RowViewModel;",
-    parameters = listOf(
-        "Landroid/content/Context;",
-        "Lcom/yahoo/mobile/client/android/finance/quote/model/QspViewData;",
-    ),
     custom = { method, classDef ->
-        classDef.type == "Lcom/yahoo/mobile/client/android/finance/quote/model/BasePencilAdModule;" &&
-            method.name == "buildRowViewModel"
+        classDef.type == FINANCE + "quote/model/BasePencilAdModule;" && method.isBuildRow()
     },
 )
 
@@ -92,13 +104,12 @@ object ComscoreStartFingerprint : Fingerprint(
     },
 )
 
-// AppsFlyer install/attribution tracking: no-op the app's init wrapper.
+// AppsFlyer install/attribution tracking: the app's SDK init routine, found by its
+// log string. Returns AppsFlyerManager$InitializeResult since 26.1x.
 object AppsFlyerInitFingerprint : Fingerprint(
-    returnType = "V",
-    parameters = listOf(),
-    custom = { method, classDef ->
-        classDef.type == "Lcom/yahoo/mobile/client/android/finance/appsflyer/AppsFlyerManager;" &&
-            method.name == "initialize"
+    strings = listOf("[AppsFlyer] SDK initialization start"),
+    custom = { _, classDef ->
+        classDef.type == FINANCE + "appsflyer/AppsFlyerManager;"
     },
 )
 
@@ -120,39 +131,39 @@ object EmbraceStartWithFrameworkFingerprint : Fingerprint(
     },
 )
 
-// Yahoo's own analytics bridge: drop every logged event.
+// Yahoo's YAnalytics -> Firebase bridge: drop every logged event. Formerly
+// YAnalyticsLoggerImpl.logEvent; now a default interface method that every
+// implementation reaches through invoke-super.
 object YAnalyticsLogEventFingerprint : Fingerprint(
     returnType = "V",
     parameters = listOf("Lcom/yahoo/mobile/yanalytics/common/event/b;"),
     custom = { method, classDef ->
-        classDef.type == "Lcom/yahoo/mobile/client/android/finance/analytics/YAnalyticsLoggerImpl;" &&
-            method.name == "logEvent"
+        classDef.type.startsWith(FINANCE + "analytics/") && method.references(FIREBASE_ANALYTICS)
     },
 )
 
 // ---- Nags (separate "Remove nags" patch) ----
 
-// "Rate this app" prompt: askForRateOrSentiment decides whether to show it.
+// "Rate this app" prompt decision. Formerly AppRateManager.askForRateOrSentiment.
 object AppRateAskFingerprint : Fingerprint(
     returnType = "Z",
     parameters = listOf(
         "Landroid/content/Context;",
         "J",
-        "Lcom/yahoo/mobile/client/android/finance/analytics/data/TrackingData;",
+        FINANCE + "analytics/data/TrackingData;",
     ),
-    custom = { method, classDef ->
-        classDef.type == "Lcom/yahoo/mobile/client/android/finance/feedback/rating/AppRateManager;" &&
-            method.name == "askForRateOrSentiment"
+    custom = { _, classDef ->
+        classDef.type == FINANCE + "feedback/rating/AppRateManager;"
     },
 )
 
-// Feed "subscribe to Premium" upsell notification: suspend invoke() returns a
-// nullable UpsellNotificationParams. Returning null suppresses the card.
+// Feed "subscribe to Premium" upsell: suspend invoke() returns a nullable
+// UpsellNotificationParams. Returning null suppresses the card.
 object UpsellNotificationFetchFingerprint : Fingerprint(
     returnType = "Ljava/lang/Object;",
-    parameters = listOf("Lkotlin/coroutines/e;"),
     custom = { method, classDef ->
-        classDef.type == "Lcom/yahoo/mobile/client/android/finance/activityfeed/usecase/FetchUpsellNotificationUseCase;" &&
-            method.name == "invoke"
+        classDef.type == FINANCE + "activityfeed/usecase/FetchUpsellNotificationUseCase;" &&
+            method.parameterTypes.size == 1 &&
+            method.parameterTypes[0].startsWith("Lkotlin/coroutines/")
     },
 )

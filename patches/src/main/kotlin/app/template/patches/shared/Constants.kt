@@ -11,11 +11,10 @@ object Constants {
         apkFileType = ApkFileType.APK,
         appIconColor = 0x6001D2, // Yahoo purple, shown in Morphe Manager
         targets = listOf(
-            // Built and verified against 26.10.2. The patches match by class +
-            // method name (the ad layer is not obfuscated), so they should keep
-            // working on newer builds unless Yahoo renames these classes.
+            // Fingerprints were rewritten for 26.19.3, whose member names are
+            // obfuscated; they match on surviving class, SDK and string references.
             AppTarget(
-                version = "26.10.2",
+                version = "26.19.3",
             ),
         ),
     )

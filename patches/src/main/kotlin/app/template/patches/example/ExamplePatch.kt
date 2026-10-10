@@ -1,8 +1,17 @@
 package app.template.patches.example
 
 import app.morphe.patcher.extensions.InstructionExtensions.addInstructions
+import app.morphe.patcher.extensions.InstructionExtensions.addInstructionsWithLabels
+import app.morphe.patcher.extensions.InstructionExtensions.getInstruction
 import app.morphe.patcher.patch.bytecodePatch
+import app.morphe.patcher.util.smali.ExternalLabel
 import app.template.patches.shared.Constants.COMPATIBILITY_YAHOO_FINANCE
+import com.android.tools.smali.dexlib2.Opcode
+import com.android.tools.smali.dexlib2.iface.instruction.ReferenceInstruction
+import com.android.tools.smali.dexlib2.iface.reference.TypeReference
+
+private const val ADS_FREE_FEATURE =
+    "Lcom/yahoo/mobile/client/android/finance/subscription/v2/model/SubscriptionFeature\$AdsFree;"
 
 @Suppress("unused")
 val removeAdsPatch = bytecodePatch(
@@ -15,18 +24,22 @@ val removeAdsPatch = bytecodePatch(
 
     execute {
         // 1. Stream/feed ads (Home, News, QSP).
-        // AdFetcher.getNextAd(int) returns the next ad unit to insert into the feed.
-        // Return a fresh EmptyAdUnit (implements YFAdUnit, no-arg constructor) at the
-        // very top of the method: the body that fetches a real ad becomes dead code,
-        // so nothing is ever requested from GAM/Taboola.
-        // Note: getNextAd is `declared-synchronized`, but in DEX the lock is taken via
-        // explicit monitor-enter further down the body. Returning before that point is
-        // safe -- no monitor is held, so none needs releasing.
-        GetNextAdFingerprint.method.addInstructions(
+        // The feed ad provider returns the next ad unit to insert into the feed.
+        // Return a fresh empty ad unit at the very top of the method: the body that
+        // fetches a real ad becomes dead code, so nothing is ever requested.
+        // The empty unit's class name is obfuscated, so take it from the method's own
+        // AdsFree early return, which is the first new-instance in the body.
+        // The method is `declared-synchronized`, but DEX takes the lock with an
+        // explicit monitor-enter; returning before it holds no monitor.
+        val getNextAd = GetNextAdFingerprint.method
+        val emptyAdUnit = getNextAd.implementation!!.instructions
+            .first { it.opcode == Opcode.NEW_INSTANCE }
+            .let { (it as ReferenceInstruction).reference as TypeReference }.type
+        getNextAd.addInstructions(
             0,
             """
-                new-instance v0, Lcom/yahoo/mobile/client/android/finance/ads/model/EmptyAdUnit;
-                invoke-direct {v0}, Lcom/yahoo/mobile/client/android/finance/ads/model/EmptyAdUnit;-><init>()V
+                new-instance v0, $emptyAdUnit
+                invoke-direct {v0}, $emptyAdUnit-><init>()V
                 return-object v0
             """,
         )
@@ -58,6 +71,23 @@ val removeAdsPatch = bytecodePatch(
                 return v0
             """,
         )
+
+        // 3c. Newer ad surfaces (Home daily brief, news, Inception slots) only ask
+        // the subscription manager whether AdsFree is accessible. Answer HAS_ACCESS
+        // for AdsFree alone so each takes the app's own ad-free path; every other
+        // feature falls through to the original lookup. v0 is a scratch local here.
+        FeatureAccessibilityFingerprint.method.apply {
+            addInstructionsWithLabels(
+                0,
+                """
+                    instance-of v0, p1, $ADS_FREE_FEATURE
+                    if-eqz v0, :original
+                    sget-object v0, $returnType->HAS_ACCESS:$returnType
+                    return-object v0
+                """,
+                ExternalLabel("original", getInstruction(0)),
+            )
+        }
 
         // 4. Quote page top banner: return null from buildRowViewModel so no row
         // (and no ad fetch) is ever produced.

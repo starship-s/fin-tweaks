@@ -19,7 +19,14 @@ val blockTrackingPatch = bytecodePatch(
         val noop = "return-void"
 
         ComscoreStartFingerprint.methodOrNull?.addInstructions(0, noop)
-        AppsFlyerInitFingerprint.methodOrNull?.addInstructions(0, noop)
+        // AppsFlyer init now reports an InitializeResult enum; report it as disabled.
+        AppsFlyerInitFingerprint.methodOrNull?.let {
+            val result = it.returnType
+            it.addInstructions(
+                0,
+                if (result == "V") noop else "sget-object v0, $result->FEATURE_DISABLED:$result\nreturn-object v0",
+            )
+        }
         EmbraceStartFingerprint.methodOrNull?.addInstructions(0, noop)
         EmbraceStartWithFrameworkFingerprint.methodOrNull?.addInstructions(0, noop)
         YAnalyticsLogEventFingerprint.methodOrNull?.addInstructions(0, noop)
