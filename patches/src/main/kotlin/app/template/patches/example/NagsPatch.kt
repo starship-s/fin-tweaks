@@ -3,6 +3,7 @@ package app.template.patches.example
 import app.morphe.patcher.extensions.InstructionExtensions.addInstructions
 import app.morphe.patcher.patch.bytecodePatch
 import app.template.patches.shared.Constants.COMPATIBILITY_YAHOO_FINANCE
+import app.template.patches.shared.accountTypePatch
 
 @Suppress("unused")
 val removeNagsPatch = bytecodePatch(
@@ -12,6 +13,7 @@ val removeNagsPatch = bytecodePatch(
     default = true,
 ) {
     compatibleWith(COMPATIBILITY_YAHOO_FINANCE)
+    dependsOn(accountTypePatch)
 
     execute {
         // "Rate this app" -> never ask.
